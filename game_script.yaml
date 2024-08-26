@@ -56,3 +56,5 @@ random_roles:
     seat: 5  # 可选项: 若不填写, 系统将自动分配
 
 
+prepared_F5_info:
+

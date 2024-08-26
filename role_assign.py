@@ -106,12 +106,11 @@ def assign_roles(config):
             'alignment': "外来者",
             'real_role': '酒鬼'
         })
-        available_player_ids.discard(player_id)
         # 移除酒鬼误认为的村民角色
         if drunk_fake_role in roles_distribution['townsfolk']:
             roles_distribution['townsfolk'].remove(drunk_fake_role)
         roles_distribution['outsiders'].remove('酒鬼')
-    outsider_count -= 1
+        outsider_count -= 1
 
     # 角色分配（确保每个玩家都分配到角色）
     assign_random_roles(townsfolk_count, outsider_count, minion_count, demon_count, roles_distribution, assigned_roles, excluded_roles, available_player_ids, available_seats)
@@ -132,6 +131,8 @@ def assign_roles(config):
 
     # 处理未被分配的角色和排除的角色
     handle_unassigned_and_exclusive_roles(roles_distribution, excluded_roles, get_role_counts(len(player_ids))[2] + get_role_counts(len(player_ids))[3])
+
+    # 打印
 
 # 获取角色阵营
 def get_alignment(role):
@@ -202,9 +203,6 @@ def assign_random_roles(townsfolk_count, outsider_count, minion_count, demon_cou
         available_roles = [role for role in roles_distribution[role_type] if role not in excluded_roles]
         selected_roles = random.sample(available_roles, min(count, len(available_roles)))
         for role in selected_roles:
-            if role == '男爵':
-                townsfolk_count -= 2
-                outsider_count += 2
             if available_player_ids:  
                 player_id = available_player_ids.pop()
                 seat = available_seats.pop(random.randint(0, len(available_seats) - 1))
@@ -236,7 +234,6 @@ def handle_unassigned_and_exclusive_roles(roles_distribution, excluded_roles, ev
 
     # 如果排除的角色数量不足邪恶玩家数量，则从未分配的村民和外来者中随机排除
     remaining_exclusive_roles_needed = evil_player_count - len(excluded_roles)
-    #print(remaining_exclusive_roles_needed)
     if remaining_exclusive_roles_needed > 0:
         unassigned_good_roles = roles_distribution['townsfolk'] + roles_distribution['outsiders']
         additional_exclusive_roles = random.sample(unassigned_good_roles, remaining_exclusive_roles_needed)
@@ -245,7 +242,6 @@ def handle_unassigned_and_exclusive_roles(roles_distribution, excluded_roles, ev
     print("\n排除的角色:")
     # 将YAML中指定的排除角色以及随机生成的排除角色都展示出来
     print("邪恶阵营已知的排除角色:")
-    #print(excluded_roles)
     for role in excluded_roles:
     	if isinstance(role, dict):
         	for value in role.values():
