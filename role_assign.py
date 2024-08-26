@@ -72,7 +72,8 @@ def assign_roles(config):
                 'player_id': player_id,
                 'seat': seat,
                 'role': role_entry['role'],
-                'alignment': get_alignment(role_entry['role'])
+                'alignment': get_alignment(role_entry['role']),
+                'logs': '',
             })
             if role_entry['role'] in townsfolk:
                townsfolk_count -= 1
@@ -104,7 +105,8 @@ def assign_roles(config):
             'seat': seat,
             'role': drunk_fake_role,
             'alignment': "外来者",
-            'real_role': '酒鬼'
+            'real_role': '酒鬼',
+            'logs': '',
         })
         # 移除酒鬼误认为的村民角色
         if drunk_fake_role in roles_distribution['townsfolk']:
@@ -130,9 +132,8 @@ def assign_roles(config):
     log_all_roles(assigned_roles)
 
     # 处理未被分配的角色和排除的角色
-    handle_unassigned_and_exclusive_roles(roles_distribution, excluded_roles, get_role_counts(len(player_ids))[2] + get_role_counts(len(player_ids))[3])
-
-    # 打印
+    excluded_roles = handle_unassigned_and_exclusive_roles(roles_distribution, excluded_roles, get_role_counts(len(player_ids))[2] + get_role_counts(len(player_ids))[3])
+    return (assigned_roles, excluded_roles)
 
 # 获取角色阵营
 def get_alignment(role):
@@ -194,25 +195,41 @@ def assign_random_roles(townsfolk_count, outsider_count, minion_count, demon_cou
                     'player_id': player_id,
                     'seat': seat,
                     'role': role,
-                    'alignment': get_alignment(role)
+                    'alignment': get_alignment(role),
+                    'logs': '',
                 })
                 remove_role_from_distribution(role, roles_distribution)
 
-
-    for role_type, count in zip(['townsfolk', 'outsiders'], [townsfolk_count, outsider_count]):
+    for role_type, count in zip(['townsfolk', 'outsiders', 'demons'], [townsfolk_count, outsider_count, demon_count]):
         available_roles = [role for role in roles_distribution[role_type] if role not in excluded_roles]
         selected_roles = random.sample(available_roles, min(count, len(available_roles)))
         for role in selected_roles:
-            if available_player_ids:  
+            if available_player_ids:
                 player_id = available_player_ids.pop()
-                seat = available_seats.pop(random.randint(0, len(available_seats) - 1))
-                assigned_roles.append({
-                    'player_id': player_id,
-                    'seat': seat,
-                    'role': role,
-                    'alignment': get_alignment(role)
-                })
-                remove_role_from_distribution(role, roles_distribution)
+                seat = available_seats.pop()
+                if role == '酒鬼':
+                    available_drunk_roles = [role for role in roles_distribution['townsfolk'] if
+                                             role not in excluded_roles]
+                    random.shuffle(available_drunk_roles)
+                    assigned_roles.append({
+                        'player_id': player_id,
+                        'seat': seat,
+                        'role': available_drunk_roles[0],
+                        'alignment': get_alignment(role),
+                        'real_role': '酒鬼',
+                        'logs': '',
+                    })
+                    remove_role_from_distribution(role, roles_distribution)
+                    remove_role_from_distribution(available_drunk_roles[0], roles_distribution)
+                else:
+                    assigned_roles.append({
+                        'player_id': player_id,
+                        'seat': seat,
+                        'role': role,
+                        'alignment': get_alignment(role),
+                        'logs': '',
+                    })
+                    remove_role_from_distribution(role, roles_distribution)
 
 # 打印和log所有玩家的角色信息
 def log_all_roles(assigned_roles):
@@ -248,9 +265,119 @@ def handle_unassigned_and_exclusive_roles(roles_distribution, excluded_roles, ev
             		print(value, end=', ')
     	else:
         	print(role, end=', ')
+    print("\n")
+    return excluded_roles
+
+
+# 首夜角色行动
+def first_night_helper(game_status):
+    assigned_roles, excluded_roles = game_status
+    existing_roles = {}
+    abnormal_roles = []  # seat number，不是玩家ID
+
+    player_count = len(assigned_roles)
+    day_count = 1
+    input("请按回车键进入夜晚...")
+    clear_screen()
+    first_night_log = '第{}夜开始:\n'.format(day_count)
+
+    for role in assigned_roles:
+        if role.get('role') == "酒鬼":
+            existing_roles.update({"{}({})".format(role.get('real_role'), role.get('role')): role})
+        else:
+            existing_roles.update({role.get('role'): role})
+
+    if '投毒者' in existing_roles.keys():
+        player = existing_roles['投毒者']
+        # input(f"请按回车键让下一位玩家行动...")
+        # clear_screen()
+        role_info = f"当前行动玩家ID: {player['player_id']}, 座位号: {player['seat']}, 角色: {player['role']}, 阵营: {player['alignment']}"
+        print(role_info)
+        input("按回车键隐藏角色信息...")
+        clear_screen()
+        target_id = ""
+        while not target_id.isdigit() or int(target_id) < 0 or int(target_id) > player_count:
+            target_id = input("请输入技能目标座位号:")
+        abnormal_roles.append(int(target_id))
+        action_log = "{}号投毒者在第{}夜投毒{}号玩家.\n".format(player['seat'], day_count, target_id)
+        print(action_log)
+        player['logs'] += action_log
+        first_night_log += action_log
+        input("按回车键隐藏此信息...")
+        clear_screen()
+        existing_roles.pop('投毒者')
+
+    for role in existing_roles.keys():
+        if role == '间谍':
+            continue
+        player = existing_roles[role]
+        nominal_role = player.get('real_role') if role.endswith('(酒鬼)') else role
+        action_log = None
+        role_info = f"当前行动玩家ID: {player['player_id']}, 座位号: {player['seat']}, 角色: {player['role']}, 阵营: {player['alignment']}"
+        match nominal_role:
+            case "洗衣妇" | "图书管理员" | "调查员" | "厨师" | "共情者":
+                print(role_info)
+                if player.get('seat') in abnormal_roles:
+                    print("Hint: 说书人注意,该角色醉酒或中毒!!!")
+                input("按回车键隐藏角色信息...")
+                clear_screen()
+                print("请说书人对{}号{}给出对应信息.".format(player['seat'], nominal_role))
+            case "管家" | "小恶魔":
+                print(role_info)
+                if player.get('seat') in abnormal_roles:
+                    print("Hint: 说书人注意,该角色醉酒或中毒!!!")
+                input("按回车键隐藏角色信息...")
+                clear_screen()
+                target_id = ""
+                while not target_id.isdigit() or int(target_id) < 0 or int(target_id) > player_count:
+                    target_id = input("请输入技能目标座位号:")
+                action_log = "{}号{}在第{}夜对{}号玩家发动技能.\n".format(player['seat'], nominal_role, day_count, target_id)
+            case "占卜师":
+                print(role_info)
+                if player.get('seat') in abnormal_roles:
+                    print("Hint: 说书人注意,该角色醉酒或中毒!!!")
+                input("按回车键隐藏角色信息...")
+                clear_screen()
+                target1_id = ""
+                target2_id = ""
+                while not target1_id.isdigit() or int(target1_id) <= 0 or int(target1_id) > player_count:
+                    target1_id = input("请输入技能目标1的座位号:")
+                while not target2_id.isdigit() or int(target2_id) <= 0 or int(target2_id) > player_count:
+                    target2_id = input("请输入技能目标2的座位号:")
+                action_log = "{}号{}在第{}夜对{}号玩家和{}号玩家发动技能.\n".format(player['seat'], nominal_role, day_count, target1_id, target2_id)
+            case _:
+                continue
+        if action_log:
+            print(action_log)
+            player['logs'] += action_log
+            first_night_log += action_log
+        input("按回车键隐藏信息...")
+        clear_screen()
+
+    if '间谍' in existing_roles.keys():
+        player = existing_roles['间谍']
+        role_info = f"当前行动玩家ID: {player['player_id']}, 座位号: {player['seat']}, 角色: {player['role']}, 阵营: {player['alignment']}"
+        print(role_info)
+        input("按回车键隐藏角色信息...")
+        clear_screen()
+        print("角色信息如下:\n")
+        log_all_roles(assigned_roles)
+        print("第{}夜行动信息如下:\n".format(day_count))
+        print(first_night_log, "\n")
+        input("按回车键隐藏信息...")
+        clear_screen()
+
+    first_night_log += "第{}夜结束.\n".format(day_count)
+    print("当夜完整信息:\n")
+    print(first_night_log)
+    input("按回车键隐藏信息...")
+    clear_screen()
+
+
 # 主程序
 if __name__ == "__main__":
     config_file = 'game_script.yaml'
     config = load_config(config_file)
-    assign_roles(config)
+    game_status = assign_roles(config)
+    first_night_helper(game_status)
 
